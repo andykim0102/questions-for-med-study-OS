@@ -1,150 +1,191 @@
 import streamlit as st
 import time
 import os
-import random
 
-# --- 경로 설정 ---
+# --- 설정 및 경로 ---
+st.set_page_config(layout="wide", page_title="Med-Study OS Pro", page_icon="🩺")
 current_dir = os.path.dirname(os.path.abspath(__file__))
-# (이미지 파일명은 기존과 동일하다고 가정하거나, 더 리얼한 것으로 교체하세요)
-img_cover_path = os.path.join(current_dir, "img_lecture_cover.png")
-img_match_path = os.path.join(current_dir, "img_lecture_match.png")
-img_scrap_path = os.path.join(current_dir, "img_lecture_scrap.png")
 
-# --- 페이지 설정 (와이드 모드) ---
-st.set_page_config(layout="wide", page_title="Med-Study OS Pro", page_icon="🧠")
+# 이미지 경로 (자동 탐지)
+img_paths = {
+    "cover": os.path.join(current_dir, "img_dashboard.png"),
+    "match": os.path.join(current_dir, "img_match.png"),
+    "scrap": os.path.join(current_dir, "img_scrap.png")
+}
+
+# --- CSS 스타일링 (SaaS 느낌 내기) ---
+st.markdown("""
+<style>
+    /* 전체 배경 및 폰트 */
+    .stApp { background-color: #f8f9fa; }
+    h1, h2, h3 { font-family: 'Helvetica Neue', sans-serif; }
+    
+    /* 카드 스타일 */
+    .metric-card {
+        background-color: white; border: 1px solid #e0e0e0; 
+        padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        text-align: center;
+    }
+    
+    /* AI 채팅창 스타일 */
+    .ai-bubble {
+        background-color: #e3f2fd; padding: 15px; border-radius: 15px;
+        margin-bottom: 10px; border-left: 5px solid #2196f3;
+    }
+    
+    /* 버튼 커스텀 */
+    .stButton>button {
+        width: 100%; border-radius: 8px; font-weight: bold;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # --- 세션 상태 초기화 ---
-if 'step' not in st.session_state: st.session_state.step = 0
-if 'notes' not in st.session_state: st.session_state.notes = ""
-if 'accuracy' not in st.session_state: st.session_state.accuracy = 82
+if 'state' not in st.session_state: st.session_state.state = 'dashboard'
+if 'scrap_count' not in st.session_state: st.session_state.scrap_count = 12
+if 'saved_time' not in st.session_state: st.session_state.saved_time = 45
 
-# --- 사이드바: 가짜 개인화 설정 ---
-with st.sidebar:
-    st.header("👤 내 프로필")
-    st.info("박규민 (본과 1학년)님 환영합니다.")
+# ==========================================
+# [Header] 상단 네비게이션 바 흉내
+# ==========================================
+col_logo, col_menu, col_user = st.columns([1, 3, 1])
+with col_logo:
+    st.markdown("### 🩺 Med-Study OS")
+with col_menu:
+    st.caption("Ver 1.0.2 Beta | Connected to: SNU_Med_Anatomy_DB")
+with col_user:
+    st.markdown("**박규민 (본과 1학년)** 님")
+
+st.divider()
+
+# ==========================================
+# [Scene 1] 메인 대시보드 (학습 현황)
+# ==========================================
+if st.session_state.state == 'dashboard':
+    st.subheader("📊 My Learning Dashboard")
     
-    st.markdown("---")
-    st.markdown("**🎓 학습 설정**")
-    st.selectbox("목표 대학", ["경상국립대 의과대학", "서울대 의과대학", "연세대 의과대학"])
-    st.selectbox("현재 과목", ["해부학 (Anatomy)", "약리학", "병리학"])
+    # 지표 카드 (사업계획서의 '시간 단축' 가치 강조)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.markdown(f"<div class='metric-card'><h3>오늘 절약한 시간</h3><h2 style='color:#2196f3'>{st.session_state.saved_time}분</h2></div>", unsafe_allow_html=True)
+    c2.markdown(f"<div class='metric-card'><h3>정리한 족보</h3><h2>{st.session_state.scrap_count}개</h2></div>", unsafe_allow_html=True)
+    c3.markdown("<div class='metric-card'><h3>매칭 정확도</h3><h2>92%</h2></div>", unsafe_allow_html=True)
+    c4.markdown("<div class='metric-card'><h3>시험 D-Day</h3><h2 style='color:#ff5252'>D-14</h2></div>", unsafe_allow_html=True)
+
+    st.markdown("### 📚 최근 학습 강의")
+    col_main, col_side = st.columns([2, 1])
     
-    st.markdown("---")
-    st.markdown("**🧠 AI 엔진 상태**")
-    # 가짜 그래프: 내가 쓸수록 똑똑해지는 느낌 주기
-    st.caption(f"개인화 매칭 정확도: **{st.session_state.accuracy}%**")
-    st.progress(st.session_state.accuracy / 100)
-    if st.session_state.step >= 4:
-        st.success("✨ 방금 데이터로 모델이 미세조정(Fine-tuned) 되었습니다.")
-
-# --- 메인 화면: 탭 구성 ---
-tab1, tab2 = st.tabs(["🖥️ 학습 스튜디오 (Study OS)", "📊 학습 분석 대시보드"])
-
-with tab1:
-    # 3단 분할 레이아웃 (강의록 | AI 비서 | 내 노트)
-    col_pdf, col_ai, col_note = st.columns([2, 1.5, 1.2])
-
-    # 1. 좌측: 강의록 뷰어
-    with col_pdf:
-        st.subheader("📄 Lecture View")
-        def show_image(path):
-            if os.path.exists(path):
-                st.image(path, use_container_width=True)
-            else:
-                st.error("이미지 파일을 넣어주세요.")
-
-        if st.session_state.step < 3:
-            show_image(img_cover_path)
-        elif st.session_state.step == 3:
-            show_image(img_match_path)
-            st.caption("✅ RAG Engine: 'Vagus Nerve' 관련 페이지 자동 이동됨")
-        elif st.session_state.step == 4:
-            show_image(img_scrap_path)
-
-    # 2. 중앙: AI 챗봇 & 족보 알림
-    with col_ai:
-        st.subheader("🤖 AI Assistant")
-        
-        # 채팅창 UI 흉내
-        with st.container(border=True, height=500):
-            st.chat_message("ai").write("강의를 실시간으로 분석하고 있습니다... 🎧")
+    with col_main:
+        if os.path.exists(img_paths["cover"]):
+            st.image(img_paths["cover"], caption="[Anatomy] Cranial Nerves & ANS - Prof. Kim", use_container_width=True)
+        else:
+            st.error("이미지 파일(img_dashboard.png)이 없습니다.")
             
-            if st.session_state.step >= 1:
-                # 녹음 중 애니메이션 효과
-                st.markdown("---")
-                st.markdown("**:red[● Rec]** `00:14:23`")
-                if st.session_state.step == 1:
-                    with st.spinner("교수님 음성 텍스트 변환(STT) 및 족보 DB 검색 중..."):
-                        time.sleep(3) # 3초 딜레이
-                    st.session_state.step = 3
-                    st.rerun()
-
-            if st.session_state.step >= 3:
-                time.sleep(0.5)
-                st.chat_message("ai").markdown("""
-                **🚨 [기출 매칭 감지]**
-                
-                방금 교수님이 강조하신 **'미주신경(Vagus Nerve)'** 내용은 **2023년도 1학기 중간고사**에 출제되었습니다.
-                
-                > **Q. 부교감 신경의 75%를 담당하는 뇌신경은?**
-                > (정답률: 45% / 난이도: 상)
-                
-                관련 강의록 페이지를 펼쳤습니다.
-                """)
-                
-                if st.session_state.step == 3:
-                    if st.button("✨ 내 노트에 정리해서 넣기 (Auto-Scrap)", type="primary"):
-                        # '학습'되는 척 연출
-                        with st.status("📝 AI가 핵심 내용을 요약하고 노트에 적고 있습니다...", expanded=True) as status:
-                            time.sleep(1)
-                            st.write("🔍 관련 개념 추출 중...")
-                            time.sleep(0.8)
-                            st.write("✒️ 요약문 생성 중...")
-                            time.sleep(0.8)
-                            st.write("💾 Private Vault에 암호화 저장 중...")
-                            status.update(label="스크랩 완료!", state="complete", expanded=False)
-                        
-                        st.session_state.notes += "\n\n[2023 기출] 미주신경(CN X)\n- 부교감신경의 75% 담당\n- 장기 대부분에 분포함\n(출처: 강의록 14p)"
-                        st.session_state.accuracy += 5 # 정확도 상승 연출
-                        st.session_state.step = 4
-                        st.rerun()
-
-    # 3. 우측: 나만의 스마트 노트
-    with col_note:
-        st.subheader("📒 My Smart Note")
-        st.text_area("오늘의 필기", value=st.session_state.notes, height=500, placeholder="AI가 정리한 내용이 이곳에 자동으로 쌓입니다.")
-
-    # 시작 버튼 (초기 상태일 때만 보임)
-    if st.session_state.step == 0:
-        st.info("⬇️ 아래 버튼을 눌러 강의 모니터링을 시작하세요.")
-        if st.button("🚀 실시간 강의 분석 시작"):
-            st.session_state.step = 1
+    with col_side:
+        st.info("💡 **AI 알림:** 어제 학습 중 '미주신경(Vagus Nerve)' 관련 기출문제 분석이 완료되었습니다.")
+        if st.button("🚀 학습 이어하기 (Enter Workspace)", type="primary"):
+            st.session_state.state = 'workspace_init'
             st.rerun()
 
-# --- 설문조사 탭 (사업계획서 검증용) ---
-with tab2:
-    st.title("📋 베타테스터 피드백")
-    st.markdown("Med-Study OS의 사업화를 위해 귀하의 솔직한 의견이 필요합니다.")
+# ==========================================
+# [Scene 2] 워크스페이스 (솔루션 핵심 기능)
+# ==========================================
+elif st.session_state.state.startswith('workspace'):
+    # 3단 분할: PDF 뷰어 | 족보 리스트 | AI 인터랙션
+    col_pdf, col_tool = st.columns([1.8, 1])
     
-    with st.form("biz_survey"):
-        st.subheader("1. 문제 인식 (Pain Point)")
-        st.markdown("사업계획서 분석에 따르면 의대생은 하루 평균 **2시간**을 단순 검색에 쓴다고 합니다.")
-        q1 = st.radio("실제 본인의 '자료 찾기/매칭' 스트레스는 어느 정도인가요?", 
-                     ["극심함 (학습 흐름이 매번 끊김)", "보통 (귀찮지만 할 만함)", "전혀 없음"])
-        
-        st.subheader("2. 솔루션 검증 (Solution)")
-        st.markdown("방금 보신 **'실시간 족보 매칭 & 자동 스크랩'** 기능이 구현된다면?")
-        q2 = st.slider("시험 기간 하루 공부 시간이 얼마나 단축될 것 같나요?", 0, 4, 1, format="%d시간")
-        
-        st.subheader("3. 가격 정책 (Business Model)")
-        st.markdown("커피 한 잔 값(월 5,900원)으로 이 모든 기능(무제한 스크랩, 족보 연동)을 쓴다면?")
-        q3 = st.radio("구독 의향", ["무조건 구독 (사전 예약)", "긍정적 검토", "무료 버전에만 관심", "안 함"])
-        
-        st.subheader("4. 추가 기능 제안")
-        q4 = st.text_area("이 기능 외에 '이것만 있으면 무조건 결제한다' 싶은 기능이 있나요?")
-        
-        contact = st.text_input("휴대전화/이메일 (베타 오픈 시 알림 및 1개월 무료 쿠폰 지급)")
-        
-        if st.form_submit_button("제출 및 쿠폰 받기"):
-            st.balloons()
-            st.success("소중한 의견이 개발팀(박규민 외)에 전달되었습니다. 감사합니다!")
+    # --- 좌측: PDF 뷰어 ---
+    with col_pdf:
+        st.markdown("#### 📄 Lecture Note Viewer")
+        if st.session_state.state == 'workspace_init':
+            st.image(img_paths["cover"], use_container_width=True)
+        elif st.session_state.state == 'workspace_match':
+            st.image(img_paths["match"], caption="✅ Smart Source Matching: 14p 자동 이동됨", use_container_width=True)
+        elif st.session_state.state == 'workspace_done':
+            st.image(img_paths["scrap"], caption="✨ Private Vault에 저장 완료", use_container_width=True)
 
+    # --- 우측: 도구 모음 ---
+    with col_tool:
+        # 탭 구성
+        tab1, tab2 = st.tabs(["🔥 족보(Past Exams)", "🤖 AI Tutor"])
+        
+        with tab1:
+            st.markdown("**2023-1학기 중간고사 기출**")
+            
+            # 기출문제 리스트 (클릭 유도)
+            with st.container(border=True):
+                st.error("Q4. 부교감 신경의 75%를 담당하는 뇌신경은? (난이도: 상)")
+                if st.button("🔍 출처 찾기 (Source Matching)"):
+                    # 로딩 연출 (RAG 엔진 작동 흉내)
+                    with st.spinner("RAG 엔진이 강의록 벡터 DB를 검색 중입니다..."):
+                        time.sleep(1.5)
+                    st.toast("매칭 성공! 관련 페이지(14p)를 펼쳤습니다.", icon="✅")
+                    st.session_state.state = 'workspace_match'
+                    st.rerun()
+            
+            st.caption("다른 문제들은 Pro 버전에서 확인 가능합니다.")
+
+        with tab2:
+            if st.session_state.state == 'workspace_match':
+                st.markdown("<div class='ai-bubble'><b>🤖 Med-OS AI</b><br>해당 문제는 <b>'미주신경(CN X)'</b>의 분포 범위와 기능을 묻고 있습니다.<br><br>강의록 14페이지 하단 다이어그램에서 출제 근거를 찾았습니다.</div>", unsafe_allow_html=True)
+                
+                st.markdown("---")
+                st.markdown("**액션 선택:**")
+                
+                if st.button("📌 스마트 스크랩 (Drag & Drop Simulation)", type="primary"):
+                    with st.status("📝 요약 노트 생성 중...", expanded=True):
+                        st.write("텍스트 추출 중...")
+                        time.sleep(0.5)
+                        st.write("핵심 요약 생성 중...")
+                        time.sleep(0.5)
+                        st.write("강의록에 부착 중...")
+                        time.sleep(0.5)
+                    st.session_state.state = 'workspace_done'
+                    st.session_state.scrap_count += 1
+                    st.session_state.saved_time += 15
+                    st.rerun()
+            else:
+                st.info("족보 문제를 선택하면 AI가 분석을 시작합니다.")
+
+    # 설문조사로 넘어가는 버튼
+    if st.session_state.state == 'workspace_done':
+        st.divider()
+        if st.button("✅ 체험 종료 및 의견 남기기 (Next Step)"):
+            st.session_state.state = 'survey'
+            st.rerun()
+
+# ==========================================
+# [Scene 3] 사업계획서 검증용 설문조사
+# ==========================================
+elif st.session_state.state == 'survey':
+    st.markdown("## 📋 Product Market Fit(PMF) 검증")
+    st.success(f"방금 기능을 통해 기존 10분 걸리던 작업을 **30초** 만에 끝냈습니다.")
+    
+    with st.form("validation_form"):
+        # 1. Pain Point 검증 (사업계획서 P.2 배경)
+        st.markdown("### 1. 문제 인식 (Problem)")
+        st.caption("사업계획서 가설: 의대생은 단순 자료 대조에 일평균 2시간을 허비한다.")
+        q1 = st.slider("Q. 평소 공부할 때 '자료 찾기/Alt-Tab'으로 인한 피로도는 몇 점인가요?", 1, 10, 8)
+        
+        # 2. Solution 검증 (사업계획서 P.3 실현가능성)
+        st.markdown("### 2. 솔루션 가치 (Solution)")
+        st.caption("방금 체험한 'Smart Source Matching'과 'Scraping' 기능입니다.")
+        q2 = st.radio("Q. 이 기능을 사용하면 시험 기간 공부 시간이 얼마나 단축될 것 같나요?", 
+                      ["변화 없음", "30분 미만", "1시간 정도", "2시간 이상 (획기적임)"])
+        
+        # 3. WTP 검증 (사업계획서 P.6 수익모델)
+        st.markdown("### 3. 가격 정책 (Price)")
+        st.caption("Med-Study OS Pro: 무제한 스크랩 + Private Vault 제공")
+        q3 = st.selectbox("Q. 월 5,900원(커피 한 잔 값)에 구독하실 의향이 있나요?", 
+                          ["반드시 구독함", "긍정적 검토", "기능이 더 추가되면 고려", "아니오"])
+        
+        # 4. 리드 수집
+        email = st.text_input("🎁 출시 알림 및 베타테스터 신청 (이메일)")
+        
+        if st.form_submit_button("제출 및 결과 보기"):
+            st.balloons()
+            st.success("소중한 의견 감사합니다! 여러분의 피드백으로 더 완벽한 OS를 만들겠습니다.")
+            st.write("---")
+            st.markdown(f"**[Debug] 수집된 데이터:** 피로도({q1}), 시간단축({q2}), 구독의향({q3})")
+            if st.button("🔄 다시 체험하기"):
+                st.session_state.state = 'dashboard'
+                st.rerun()
